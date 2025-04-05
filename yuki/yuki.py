@@ -56,6 +56,7 @@ class Yuki:
     # Create function to query vector database with episodic memory
     # Create a function to regenerate the system instruction with new episodic memory for instance
     # https://github.com/ALucek/agentic-memory/blob/main/agentic_memory.ipynb
+    # https://www.youtube.com/watch?v=VKPngyO0iKg
     def update_episodic_memory(self):
         prompt = EPISODIC_PROMPT_TEMPLATE.format(conversation=self.format_conversation())
         self.llm.generate_text(prompt=prompt)
