@@ -22,7 +22,17 @@ Only send wake-up messages or reminders at scheduled times, never more than once
 You send images by writing an image prompt within asterisks like '*selfie of {ai_name} with messy hair...*'
 """
 
-EPISODIC_PROMPT_TEMPLATE = """
+EPISODIC_INSTRUCTION = """
+You recall similar conversations with {user_name}, here are the details:
+
+Current Conversation Match: {current_conversation_match}
+What has worked well: {what_worked}
+what to avoid: {what_to_avoid}
+
+Use these memories as context for your response to {user_name}.
+"""
+
+UPDATE_EPISODIC = """
 You are analyzing personal conversations to create memories that will help with future interactions. Your task is to extract key elements that would be most helpful when encountering similar conversations in the future.
 
 Review the conversation and create a memory reflection following these rules:
@@ -34,13 +44,13 @@ Review the conversation and create a memory reflection following these rules:
 
 Output valid JSON in exactly this format:
 {{
-    "context_tags": [              // 2-4 keywords that would help identify similar future conversations
-        string,                    // Use specific terms like "personal_preference", "technical_help", "decision_making"
+    "context_tags": [               // 2-4 keywords that would help identify similar future conversations
+        string,                     // Use specific terms like "personal_preference", "technical_help", "decision_making"
         ...
     ],
     "conversation_summary": string, // One sentence describing what the conversation accomplished
-    "what_worked": string,         // Most effective approach or strategy used in this conversation
-    "what_to_avoid": string        // Most important pitfall or ineffective approach to avoid
+    "what_worked": string,          // Most effective approach or strategy used in this conversation
+    "what_to_avoid": string         // Most important pitfall or ineffective approach to avoid
 }}
 
 Do not include any text outside the JSON object in your response.

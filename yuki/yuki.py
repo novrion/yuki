@@ -1,102 +1,72 @@
 import os
 from dotenv import load_dotenv
-import json
-import chromadb
 from datetime import datetime
+import chromadb
 
-from llm import llm, BaseModel
+from llm import GoogleChatAI, Message, BaseModel
 from prompts import (
     BASE_INSTRUCTION,
-    EPISODIC_PROMPT_TEMPLATE,
+    EPISODIC_INSTRUCTION,
+    UPDATE_EPISODIC,
 )
 
 load_dotenv()
-API_KEY = os.getenv("API_KEY")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 class Yuki:
     def __init__(self, ai_name, user_name):
-        self.llm = llm(API_KEY)
-
         self.ai_name = ai_name
         self.user_name = user_name
+ 
+        self.llm = GoogleChatAI(api_key=GOOGLE_API_KEY)
 
-        self.msgs = []
-        self.conversations = []
+        self.messages = []
+        self.system_instruction = ""
+
         self.what_worked = set()
         self.what_to_avoid = set()
 
-        # Vector Database
         self.vdb_client = chromadb.PersistentClient(path="./vdb")
-        self.vdb_episodic = self.vdb_client.get_or_create_collection(
-            name="episodic_memory",
-            metadata={
-                "description": "Collection of historical conversations and takeaways."
-            }
-        )
-        self.vdb_semantic = self.vdb_client.get_or_create_collection(
-            name="semantic_memory",
-            metadata={
-                "description": "Collection of documents (RAG)."
-            }
-        )
+        self.vdb_episodic = self.vdb_client.get_or_create_collection(name="episodic_memory")
+        self.vdb_semantic = self.vdb_client.get_or_create_collection(name="semantic_memory")
 
+    def chat(self):
+        while True:
+            user_input = input(f"{self.user_name}: ")
+            if user_input.lower() == "exit":
+                self.update_episodic_memory()
+                break
 
+            user_message = self.llm.user_message(user_input)
 
-    def print_msgs(self):
-        for msg in msgs:
-            print(f"{msg["role"]}:\t{msg["content"]}\n")
+            system_instruction = self.create_system_instruction(user_message)
 
+            self.messages.append(user_message)
 
+            response = self.llm.invoke(
+                contents=self.messages,
+                system_instruction=system_instruction
+            )
 
+            print(f"{self.ai_name}: ", response)
 
-
-
-
-    def msg(self, user_msg):
-        self.msgs.append({
-            "role": "user",
-            "content": user_msg
-        })
-
-        response = self.llm.generate_text(
-            msgs=self.msgs,
-            system_instruction=self.construct_system_instruction(user_msg)
-        )
-
-        self.msgs.append({
-            "role": "model",
-            "content": response
-        })
-
-        return response
-
-
-    def format_conversation(self):
-        conversation = []
-        for msg in self.msgs:
-            role = self.user_name.upper() if msg["role"] == "user" else "YUKI"
-            conversation.append(f"{role}: {msg["content"]}")
-        return "\n".join(conversation)
-
-
-
-
-
-
-
-
-
-
-
-    # https://github.com/ALucek/agentic-memory/blob/main/agentic_memory.ipynb
-    # https://www.youtube.com/watch?v=VKPngyO0iKg
+            ai_message = self.llm.ai_message(response)
+            self.messages.append(ai_message)
 
 
     #
     # Episodic Memory
     #
 
-    def update_episodic(self):
+    def format_conversation(self):
+        conversation = []
+        for message in self.messages:
+            role = self.user_name.upper() if message.role == "user" else self.ai_name.upper()
+            conversation.append(f"{role}: {message.content}")
+        return "\n".join(conversation)
+
+
+    def update_episodic_memory(self):
 
         class episodic_schema(BaseModel):
             context_tags: list[str]
@@ -105,8 +75,8 @@ class Yuki:
             what_to_avoid: str
 
         conversation = self.format_conversation()
-        prompt = EPISODIC_PROMPT_TEMPLATE.format(conversation=conversation)
-        mem: episodic_schema = self.llm.generate_json(
+        prompt = UPDATE_EPISODIC.format(conversation=conversation)
+        mem: episodic_schema = self.llm.invoke_json(
             prompt=prompt,
             schema=episodic_schema
         )
@@ -128,39 +98,58 @@ class Yuki:
         )
 
 
-    def construct_episodic_instruction(self, query):
-        mem = self.query_episodic(query)
+    def create_episodic_instruction(self, user_message: Message):
+        mem = self.query_episodic(user_message.content)
         if not mem["documents"][0]:
             return ""
 
-        current_conversation_match = mem["documents"][0][0].replace('\n', '\\n')
         self.what_worked.update(mem["metadatas"][0][0]["what_worked"].split('. '))
         self.what_to_avoid.update(mem["metadatas"][0][0]["what_to_avoid"].split('. '))
 
-        if len(self.conversations) >= 4:
-            previous_conversations = self.conversations[-4:]
-        else:
-            previous_conversations = self.conversations
+        current_conversation_match = mem["documents"][0][0].replace('\n', '\\n')
+        what_worked = " ".join(self.what_worked)
+        what_to_avoid = " ".join(self.what_to_avoid)
 
-        return f"""You recall similar conversations with {self.user_name}, here are the details:
-
-Current Conversation Match: {current_conversation_match}
-Previous Conversations: {" | ".join(previous_conversations)}
-What has worked well: {" ".join(self.what_worked)}
-what to avoid: {" ".join(self.what_to_avoid)}
-
-Use these memories as context for your response to {self.user_name}."""
+        return EPISODIC_INSTRUCTION.format(
+            user_name=self.user_name,
+            current_conversation_match=current_conversation_match,
+            what_worked=what_worked,
+            what_to_avoid=what_to_avoid
+        )
 
 
 
     #
-    # System Instruction Construction
+    # Semantic Memory
     #
 
-    def construct_system_instruction(self, user_msg):
-        base_instruction = BASE_INSTRUCTION.format(ai_name=self.ai_name, user_name=self.user_name)
-        episodic_instruction = self.construct_episodic_instruction(user_msg)
+    #
+    # System Instruction
+    #
 
-        final = base_instruction + "\n\n" + episodic_instruction
-        print(final)
-        return final
+    def create_system_instruction(self, user_message: Message):
+        base_instruction = BASE_INSTRUCTION.format(
+            ai_name=self.ai_name,
+            user_name=self.user_name
+        )
+
+        episodic_instruction = self.create_episodic_instruction(user_message)
+
+        return base_instruction + "\n\n" + episodic_instruction
+
+
+
+
+
+
+
+
+
+
+
+def main():
+    yuki = Yuki("Yuki", "Elias")
+    yuki.chat()
+
+if __name__ == "__main__":
+    main()
