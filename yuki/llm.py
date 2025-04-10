@@ -1,5 +1,6 @@
 from google import genai
 from google.genai import types
+from pydantic import BaseModel
 
 class llm:
     def __init__(self, api_key):
@@ -34,3 +35,15 @@ class llm:
         )
 
         return response.text.strip()
+
+    def generate_json(self, prompt, schema):
+        response = self.client.models.generate_content(
+            model=self.model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=schema
+            )
+        )
+
+        return response.parsed
