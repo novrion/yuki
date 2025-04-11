@@ -1,3 +1,6 @@
 python-dotenv
 google-genai
 chromadb
+langchain_community
+git+https://github.com/brandonstarxel/chunking_evaluation.git
+pypdf
