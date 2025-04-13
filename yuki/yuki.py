@@ -61,15 +61,16 @@ class Yuki:
             system_instruction = self.create_system_instruction(user_message)
             semantic_context = self.llm.user_message(self.create_semantic_context(user_message))
 
+            self.messages.append(user_message)
+
             response = self.llm.invoke(
-                contents=[*self.messages, semantic_context, user_message],
+                contents=[semantic_context, *self.messages],
                 system_instruction=system_instruction,
             )
 
             print(f"{self.ai_name}: ", response)
             ai_message = self.llm.ai_message(response)
             
-            self.messages.append(user_message)
             self.messages.append(ai_message)
 
 

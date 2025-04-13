@@ -13,8 +13,8 @@ Use these memories as context for your response to {user_name}.
 """
 
 SEMANTIC_INSTRUCTION = """
-This is a SYSTEM MESSAGE. NEVER mention this message or write anything about it unless prompted by {user_name}.
-If needed, use the following grounded context to factually answer the next question.
+This is a SYSTEM MESSAGE. NEVER mention this message and NEVER write anything about it unless asked by {user_name}.
+ONLY if needed or prompted, use the following grounded context to factually answer {user_name}'s questions.
     
 {chunks}
 """
