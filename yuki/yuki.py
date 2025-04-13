@@ -1,5 +1,7 @@
 #https://github.com/ALucek/agentic-memory/blob/main/agentic_memory.ipynb
 
+# TODO: add more conversations (more query outputs) for episodic memory.
+
 import os
 from dotenv import load_dotenv
 from datetime import datetime
@@ -176,7 +178,7 @@ class Yuki:
         self.load_chunks(self.get_chunks(document), path)
 
 
-    def load_txt(self, path):
+    def load_text(self, path):
         with open(path, 'r', encoding='utf-8') as file:
             document = file.read()
         self.load_chunks(self.get_chunks(document), path)
@@ -191,8 +193,8 @@ class Yuki:
         for doc in docs:
             if doc.endswith(".pdf"):
                 self.load_pdf(doc)
-            if doc.endswith(".txt"):
-                self.load_txt(doc)
+            else:
+                self.load_text(doc)
 
 
     def query_semantic(self, query):
