@@ -39,12 +39,12 @@ class GoogleChatAI:
             )
         return contents
 
-    def invoke(self, contents, prompt=None, system_instruction="", temperature=1.0, top_p=0.9, top_k=40, max_output_tokens=8192):
+    def invoke(self, prompt=None, contents=None, system_instruction="", temperature=0.9, top_p=0.9, top_k=40, max_output_tokens=8192):
         if prompt:
             contents = prompt
         else:
             contents = self.convert_messages(contents)
-
+        
         response = self.client.models.generate_content(
             model=self.model,
             contents=contents,
@@ -65,6 +65,7 @@ class GoogleChatAI:
             model=self.model,
             contents=prompt,
             config=types.GenerateContentConfig(
+                temperature=0,
                 response_mime_type="application/json",
                 response_schema=schema
             )

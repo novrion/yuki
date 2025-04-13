@@ -1,5 +1,7 @@
 #https://github.com/ALucek/agentic-memory/blob/main/agentic_memory.ipynb
 
+# TODO: consider making the semantic memory the first message, so that the AI doesn't confuse the current messages with that.
+
 import os
 from dotenv import load_dotenv
 from datetime import datetime
@@ -12,11 +14,18 @@ from prompts import (
     BASE_INSTRUCTION,
     EPISODIC_INSTRUCTION,
     SEMANTIC_INSTRUCTION,
+    PROCEDURAL_INSTRUCTION,
     UPDATE_EPISODIC,
+    UPDATE_PROCEDURAL,
 )
 
 DOCS_DIR = "./docs/"
 os.makedirs(DOCS_DIR, exist_ok=True)
+
+PROCEDURAL_PATH = "./procedural_memory"
+for file in [PROCEDURAL_PATH]:
+    if not os.path.exists(file):
+        open(file, 'w').close()
 
 load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -45,22 +54,22 @@ class Yuki:
             user_input = input(f"{self.user_name}: ")
             if user_input.lower() == "exit":
                 self.update_episodic_memory()
+                self.update_procedural_memory()
                 break
 
             user_message = self.llm.user_message(user_input)
-
             system_instruction = self.create_system_instruction(user_message)
-
-            self.messages.append(user_message)
+            semantic_context = self.llm.user_message(self.create_semantic_context(user_message))
 
             response = self.llm.invoke(
-                contents=self.messages,
-                system_instruction=system_instruction
+                contents=[*self.messages, semantic_context, user_message],
+                system_instruction=system_instruction,
             )
 
             print(f"{self.ai_name}: ", response)
-
             ai_message = self.llm.ai_message(response)
+            
+            self.messages.append(user_message)
             self.messages.append(ai_message)
 
 
@@ -85,7 +94,10 @@ class Yuki:
             what_to_avoid: str
 
         conversation = self.format_conversation()
-        prompt = UPDATE_EPISODIC.format(conversation=conversation)
+        prompt = UPDATE_EPISODIC.format(conversation=conversation,
+                                        ai_name=self.ai_name,
+                                        user_name=self.user_name
+                                        )
         mem: episodic_schema = self.llm.invoke_json(
             prompt=prompt,
             schema=episodic_schema
@@ -132,6 +144,28 @@ class Yuki:
     #
     # Semantic Memory
     #
+
+    def load_chunks(self, chunks, path):
+        self.vdb_semantic.delete(where={"path": path})
+        for chunk in chunks:
+            self.vdb_semantic.add(
+                documents=[chunk],
+                metadatas={
+                    "path": path
+                },
+                ids=[f"{datetime.now().timestamp()}"]
+            )
+
+    def get_chunks(self, document):
+        recursive_character_chunker = RecursiveTokenChunker(
+            chunk_size=800,
+            chunk_overlap=0,
+            length_function=len,
+            separators=["\n\n", "\n", ".", "?", "!", " ", ""]
+        )
+
+        return recursive_character_chunker.split_text(document)
+
     
     def load_pdf(self, path):
         loader = PyPDFLoader(path)
@@ -140,27 +174,13 @@ class Yuki:
             pages.append(page)
 
         document = " ".join(page.page_content for page in pages)
-        
-        recursive_character_chunker = RecursiveTokenChunker(
-            chunk_size=800,
-            chunk_overlap=0,
-            length_function=len,
-            separators=["\n\n", "\n", ".", "?", "!", " ", ""]
-        )
+        self.load_chunks(self.get_chunks(document), path)
 
-        recursive_character_chunks = recursive_character_chunker.split_text(document)
 
-        # Delete existant chunks with same path
-        self.vdb_semantic.delete(where={"path": path})
-
-        for i, chunk in enumerate(recursive_character_chunks):
-            self.vdb_semantic.add(
-                documents=[chunk],
-                metadatas={
-                    "path": path
-                },
-                ids=[f"{i}"]
-            )
+    def load_txt(self, path):
+        with open(path, 'r', encoding='utf-8') as file:
+            document = file.read()
+        self.load_chunks(self.get_chunks(document), path)
 
 
     def load_docs(self):
@@ -169,21 +189,21 @@ class Yuki:
             doc_path = os.path.join(DOCS_DIR, doc_name)
             docs.append(doc_path)
 
-        self.vdb_semantic.delete(where={"path": "./docs/MOSES C++ Technical Specification (2025).pdf"})
-
         for doc in docs:
             if doc.endswith(".pdf"):
                 self.load_pdf(doc)
+            if doc.endswith(".txt"):
+                self.load_txt(doc)
 
 
     def query_semantic(self, query):
         return self.vdb_semantic.query(
             query_texts=[query],
-            n_results=15
+            n_results=5
         )
 
 
-    def create_semantic_instruction(self, user_message: Message):
+    def create_semantic_context(self, user_message: Message):
         mem = self.query_semantic(user_message.content)
         if not mem["documents"][0][0]:
             return ""
@@ -204,6 +224,43 @@ class Yuki:
 
 
     #
+    # Procedural Memory
+    #
+    
+    def update_procedural_memory(self):
+        with open(PROCEDURAL_PATH, 'r', encoding='utf-8') as file:
+            current_takeaways = file.read().strip()
+
+        prompt = UPDATE_PROCEDURAL.format(
+            ai_name=self.ai_name,
+            current_takeaways=current_takeaways,
+            what_worked=". ".join(self.what_worked),
+            what_to_avoid=". ".join(self.what_to_avoid)
+        )
+
+        procedural_memory = self.llm.invoke(
+            prompt=prompt,
+            temperature=0
+        )
+
+        with open(PROCEDURAL_PATH, 'w', encoding='utf-8') as file:
+            file.write(procedural_memory)
+
+    def create_procedural_instruction(self):
+        with open(PROCEDURAL_PATH, 'r', encoding='utf-8') as file:
+            procedural_memory = file.read().strip()
+
+        if not procedural_memory:
+            return ""
+
+        return PROCEDURAL_INSTRUCTION.format(
+            user_name=self.user_name,
+            procedural_memory=procedural_memory
+        )
+
+
+
+    #
     # System Instruction
     #
 
@@ -213,9 +270,13 @@ class Yuki:
             user_name=self.user_name
         )
         episodic_instruction = self.create_episodic_instruction(user_message)
-        semantic_instruction = self.create_semantic_instruction(user_message)
+        procedural_instruction = self.create_procedural_instruction()
 
-        instruction = base_instruction + "\n\n" + episodic_instruction + "\n\n" + semantic_instruction
+        instruction = base_instruction
+        instruction += "\n\n" + episodic_instruction
+        if procedural_instruction:
+            instruction += "\n\n" + procedural_instruction
+
         return instruction
 
 
