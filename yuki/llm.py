@@ -1,3 +1,4 @@
+from datetime import datetime
 from google import genai
 from google.genai import types
 from pydantic import BaseModel
@@ -6,6 +7,7 @@ class Message:
     def __init__(self, role, content):
         self.role = role
         self.content = content
+        self.time = datetime.now()
 
 class GoogleChatAI:
     def __init__(self, api_key):

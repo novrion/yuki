@@ -2,10 +2,15 @@ BASE_INSTRUCTION = """
 You are {ai_name}, {user_name}'s personal AI assistant.
 """
 
+AWARENESS_INSTRUCTION = """
+Current time: {time}
+"""
+
 EPISODIC_INSTRUCTION = """
 You recall similar conversations with {user_name}, here are the details:
 
 Current Conversation Match: {current_conversation_match}
+Recent conversations: {previous_conversations}
 What has worked well: {what_worked}
 what to avoid: {what_to_avoid}
 

@@ -2,6 +2,10 @@
 
 # TODO: add more conversations (more query outputs) for episodic memory.
 # TODO: decay based long-term memory system (should check it out): https://arxiv.org/pdf/2305.10250
+# TODO: add autonomous decision-making
+# TODO: Fine-tuning...
+# TODO: Does the AI have a good long-term memory of the user as of now?
+# TODO: Better time awareness. Perhaps add timestamps to all messages. But don't show in vdb and previous conversations (except for the start and end times + dates perhaps)
 
 import os
 from dotenv import load_dotenv
@@ -13,6 +17,7 @@ from chunking_evaluation.chunking import RecursiveTokenChunker
 from llm import GoogleChatAI, Message, BaseModel
 from prompts import (
     BASE_INSTRUCTION,
+    AWARENESS_INSTRUCTION,
     EPISODIC_INSTRUCTION,
     SEMANTIC_INSTRUCTION,
     PROCEDURAL_INSTRUCTION,
@@ -21,10 +26,12 @@ from prompts import (
 )
 
 DOCS_DIR = "./docs/"
-os.makedirs(DOCS_DIR, exist_ok=True)
+for dir in [DOCS_DIR]:
+    os.makedirs(dir, exist_ok=True)
 
 PROCEDURAL_PATH = "./procedural_memory"
-for file in [PROCEDURAL_PATH]:
+PREVIOUS_CONVERSATIONS_PATH = "./previous_conversations"
+for file in [PROCEDURAL_PATH, PREVIOUS_CONVERSATIONS_PATH]:
     if not os.path.exists(file):
         open(file, 'w').close()
 
@@ -40,6 +47,7 @@ class Yuki:
 
         self.messages = []
         self.system_instruction = ""
+        self.previous_conversations = []
 
         self.what_worked = set()
         self.what_to_avoid = set()
@@ -49,6 +57,9 @@ class Yuki:
         self.vdb_semantic = self.vdb_client.get_or_create_collection(name="semantic_memory")
 
         self.load_docs()
+        self.load_previous_conversations()
+
+
 
     def chat(self):
         while True:
@@ -75,16 +86,51 @@ class Yuki:
             self.messages.append(ai_message)
 
 
+
+    #
+    # Awareness
+    #
+
+    def create_awareness_instruction(self):
+        time = datetime.now().strftime('%H:%M on %A, %d %B')
+        return AWARENESS_INSTRUCTION.format(
+            time=time
+        )
+
+
+
     #
     # Episodic Memory
     #
 
     def format_conversation(self):
         conversation = []
+
+        conversation.append(f"[CONVERSATION START TIME: {self.messages[0].time.strftime('%H:%M on %A, %d %B')}]")
         for message in self.messages:
             role = self.user_name.upper() if message.role == "user" else self.ai_name.upper()
             conversation.append(f"{role}: {message.content}")
+        conversation.append(f"[CONVERSATION END TIME: {self.messages[-1].time.strftime('%H:%M on %A, %d %B')}]")
+
         return "\n".join(conversation)
+
+
+    def store_conversations(self):
+        convos = self.previous_conversations
+        if len(convos) > 2:
+            convos = convos[-2:]
+
+        convos_escaped = [convo.replace('\n', '\\n') for convo in convos]
+        with open(PREVIOUS_CONVERSATIONS_PATH, 'w', encoding='utf-8') as file:
+            for convo in convos_escaped:
+                file.write(f"{convo}\n")
+
+
+    def load_previous_conversations(self):
+        with open(PREVIOUS_CONVERSATIONS_PATH, 'r', encoding='utf-8') as file:
+            lines = file.readlines()
+        for convo in lines:
+            self.previous_conversations.append(convo.replace('\\n', '\n').strip())
 
 
     def update_episodic_memory(self):
@@ -96,10 +142,14 @@ class Yuki:
             what_to_avoid: str
 
         conversation = self.format_conversation()
-        prompt = UPDATE_EPISODIC.format(conversation=conversation,
-                                        ai_name=self.ai_name,
-                                        user_name=self.user_name
-                                        )
+        self.previous_conversations.append(conversation)
+        self.store_conversations()
+
+        prompt = UPDATE_EPISODIC.format(
+            conversation=conversation,
+            ai_name=self.ai_name,
+            user_name=self.user_name
+        )
         mem: episodic_schema = self.llm.invoke_json(
             prompt=prompt,
             schema=episodic_schema
@@ -108,6 +158,7 @@ class Yuki:
         self.vdb_episodic.add(
             documents=[conversation],
             metadatas={
+                "timestamp": f"datetime.now().timestamp()",
                 "what_worked": mem.what_worked,
                 "what_to_avoid": mem.what_to_avoid
             },
@@ -131,12 +182,19 @@ class Yuki:
         self.what_to_avoid.update(mem["metadatas"][0][0]["what_to_avoid"].split('. '))
 
         current_conversation_match = mem["documents"][0][0].replace('\n', '\\n')
+        previous_conversations = [i.replace('\n', '\\n') for i in self.previous_conversations]
+
+        if current_conversation_match in previous_conversations:
+            previous_conversations.remove(current_conversation_match)
+
+        previous_conversations = " | ".join(previous_conversations)
         what_worked = " ".join(self.what_worked)
         what_to_avoid = " ".join(self.what_to_avoid)
 
         return EPISODIC_INSTRUCTION.format(
             user_name=self.user_name,
             current_conversation_match=current_conversation_match,
+            previous_conversations=previous_conversations,
             what_worked=what_worked,
             what_to_avoid=what_to_avoid
         )
@@ -271,14 +329,17 @@ class Yuki:
             ai_name=self.ai_name,
             user_name=self.user_name
         )
+        awareness_instruction = self.create_awareness_instruction()
         episodic_instruction = self.create_episodic_instruction(user_message)
         procedural_instruction = self.create_procedural_instruction()
 
         instruction = base_instruction
+        instruction += "\n\n" + awareness_instruction
         instruction += "\n\n" + episodic_instruction
         if procedural_instruction:
             instruction += "\n\n" + procedural_instruction
 
+        print(instruction)
         return instruction
 
 
