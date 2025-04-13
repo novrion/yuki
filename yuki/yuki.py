@@ -1,7 +1,5 @@
 #https://github.com/ALucek/agentic-memory/blob/main/agentic_memory.ipynb
 
-# TODO: consider making the semantic memory the first message, so that the AI doesn't confuse the current messages with that.
-
 import os
 from dotenv import load_dotenv
 from datetime import datetime
@@ -279,12 +277,6 @@ class Yuki:
             instruction += "\n\n" + procedural_instruction
 
         return instruction
-
-
-
-
-
-
 
 
 
