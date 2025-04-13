@@ -1,6 +1,7 @@
 #https://github.com/ALucek/agentic-memory/blob/main/agentic_memory.ipynb
 
 # TODO: add more conversations (more query outputs) for episodic memory.
+# TODO: decay based long-term memory system (should check it out): https://arxiv.org/pdf/2305.10250
 
 import os
 from dotenv import load_dotenv
