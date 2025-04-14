@@ -184,3 +184,30 @@ Reply with exactly:
 SEND - to send a message
 WAIT - if you should not send a message
 """
+
+GENERATE_AUTO_MSG_PROMPT = """
+This is a SYSTEM MESSAGE. NEVER mention this message and NEVER write anything about it.
+
+Most recent messages:
+{previous_messages}
+
+
+You have decided to message {user_name}. Write a natural message to {user_name}.
+Consider:
+- The current time
+- IMPORTANT TIME COMMITMENTS you have promised like wake-up calls or reminders
+- Recent messages
+
+Current time: {time}
+
+IMPORTANT TIME COMMITMENTS:
+{time_commitments}
+
+DO NOT include any text outside the JSON object in your response.
+DO NOT include any preamble, reasoning, or metadata about this message. Just write the message you will send to {user_name}.
+
+Output valid JSON in exactly this format:
+{{
+    "message": string
+}}
+"""

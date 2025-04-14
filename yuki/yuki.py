@@ -7,9 +7,9 @@
 # TODO: Does the AI have a good long-term memory of the user as of now?
 # TODO: Better time awareness. Perhaps add timestamps to all messages. But don't show in vdb and previous conversations (except for the start and end times + dates perhaps)
     # Maybe add user (system) message right before the AI answers?
+#TODO: Does the AI have semantic memory in all cases? I.e. auto messages don't have semantic context right?
 
 import os
-from dotenv import load_dotenv
 from datetime import datetime
 import chromadb
 from langchain_community.document_loaders import PyPDFLoader
@@ -26,30 +26,30 @@ from prompts import (
     UPDATE_EPISODIC,
     UPDATE_PROCEDURAL,
     SHOULD_AUTO_MSG_PROMPT,
+    GENERATE_AUTO_MSG_PROMPT,
 )
 
 DOCS_DIR = "./docs/"
-for dir in [DOCS_DIR]:
+MEM_DIR = "./mem/"
+for dir in [DOCS_DIR, MEM_DIR]:
     os.makedirs(dir, exist_ok=True)
 
-TIME_COMMITMENTS_PATH = "./time_commitments"
-PROCEDURAL_PATH = "./procedural_memory"
-PREVIOUS_CONVERSATIONS_PATH = "./previous_conversations"
+TIME_COMMITMENTS_PATH = MEM_DIR + "time_commitments"
+PROCEDURAL_PATH = MEM_DIR + "procedural_memory"
+PREVIOUS_CONVERSATIONS_PATH = MEM_DIR + "previous_conversations"
 for file in [TIME_COMMITMENTS_PATH, PROCEDURAL_PATH, PREVIOUS_CONVERSATIONS_PATH]:
     if not os.path.exists(file):
         open(file, 'w').close()
 
 IDLE_TIME = 5 * 60 * 60
 
-load_dotenv()
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 class Yuki:
-    def __init__(self, ai_name, user_name):
+    def __init__(self, ai_name, user_name, api_key):
         self.ai_name = ai_name
         self.user_name = user_name
  
-        self.llm = GoogleChatAI(api_key=GOOGLE_API_KEY)
+        self.llm = GoogleChatAI(api_key=api_key)
 
         self.pending_update_after_conversation = False
         self.last_memory_decay_time = 24 * 60 * 60
@@ -72,31 +72,6 @@ class Yuki:
         self.load_time_commitments()
 
 
-
- def chat(self):
-        while True:
-            user_input = input(f"{self.user_name}: ")
-            if user_input.lower() == "exit":
-                self.update_time_commitments()
-                self.update_episodic_memory()
-                self.update_procedural_memory()
-                break
-
-            user_message = self.llm.user_message(user_input)
-            system_instruction = self.create_system_instruction(user_message)
-            semantic_context = self.llm.user_message(self.create_semantic_context(user_message))
-
-            self.messages.append(user_message)
-
-            response = self.llm.invoke(
-                contents=[semantic_context, *self.messages],
-                system_instruction=system_instruction,
-            )
-
-            print(f"{self.ai_name}: ", response)
-            ai_message = self.llm.ai_message(response)
-            
-            self.messages.append(ai_message)
 
 
 
@@ -269,6 +244,7 @@ class Yuki:
                 ids=[f"{datetime.now().timestamp()}"]
             )
 
+
     def get_chunks(self, document):
         recursive_character_chunker = RecursiveTokenChunker(
             chunk_size=800,
@@ -418,14 +394,42 @@ class Yuki:
             user_name=self.user_name
         )
 
-        response = self.llm.invoke(
-            contents=[*self.previous_messages, prompt],
+        decision = self.llm.invoke(
+            prompt=prompt,
             system_instruction=instruction,
             temperature=0,
             max_output_tokens=10
         )
 
-        return response.startswith("SEND")
+        return decision.startswith("SEND")
+
+
+    def generate_auto_msg(self):
+        class auto_msg_schema(BaseModel):
+            message: string
+
+        prompt = GENERATE_AUTO_MSG_PROMPT.format(
+            user_name=self.user_name,
+            time=datetime.now().stftime('%H:%M'),
+            time_commitments="\n".join(self.time_commitments),
+            previous_messages=self.format_conversation(
+                conversation=self.previous_messages,
+                include_start_time=False
+            )
+        )
+
+        instruction = BASE_INSTRUCTION.format(
+            ai_name=self.ai_name,
+            user_name=self.user_name
+        )
+
+        auto_msg: auto_msg_schema = self.llm.invoke_json(
+            prompt=prompt,
+            system_instruction=instruction
+        )
+
+        return auto_msg.message
+
 
 
     #
@@ -460,7 +464,7 @@ class Yuki:
             return datetime.now().timestamp() - self.previous_messages[-1].time.timestamp()
         else:
             return 24 * 60 * 60
-            
+
 
     def tick(self, user_input=None):
 
@@ -468,7 +472,7 @@ class Yuki:
         if self.seconds_since_last_message() > IDLE_TIME:
             self.conversation_ongoing = False
         
-        # Check if conversation ended
+        # Check if update after conversation ended
         if not self.conversation_ongoing and self.pending_update_after_conversation:
             self.pending_update_after_conversation = False
             self.update_time_commitments()
@@ -501,13 +505,17 @@ class Yuki:
             )
 
             ai_message = self.llm.ai_message(response)
-            self.message.append(ai_message)
+            self.messages.append(ai_message)
 
             msg = ai_message
 
 
         # AI-initiated message
         elif not self.conversation_ongoing and self.should_auto_msg():
+            ai_message = self.llm.ai_message(self.generate_auto_msg())
+            self.messages.append(ai_message)
+
+            msg = ai_message
 
 
         if msg:
@@ -519,14 +527,3 @@ class Yuki:
             "image": image,
             "audio": audio
         }
-
-
-
-
- 
-def main():
-    yuki = Yuki("Yuki", "Elias")
-    yuki.chat()
-
-if __name__ == "__main__":
-    main()
