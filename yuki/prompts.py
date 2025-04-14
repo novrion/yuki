@@ -4,6 +4,9 @@ You are {ai_name}, {user_name}'s personal AI assistant.
 
 AWARENESS_INSTRUCTION = """
 Current time: {time}
+
+IMPORTANT TIME COMMITMENTS you have promised {user_name}:
+{time_commitments}
 """
 
 EPISODIC_INSTRUCTION = """
@@ -28,6 +31,42 @@ PROCEDURAL_INSTRUCTION = """
 Additionally, here are som guidelines for interactions with {user_name}: {procedural_memory}
 """
 
+UPDATE_TIME_COMMITMENTS = """
+You are analyzing a personal conversation and past time commitments to continuously update a note that will help {ai_name} with future interactions. Your task is to extract time commitment promises you have made to {user_name} and keep the note updated, all while considering the current time.
+
+Review the conversation and the note to update the note following these rules:
+
+1. Include precise and ABSOLUTE time context for future reference - DO NOT include relative time context like "...in 15 minutes"
+2. Be extremely concise - each string should be one clear sentence
+3. Include time commitments like wake-up calls, reminders or other time sensitive promises
+4. ONLY remove a time commitment IF {ai_name} fulfilled it in the prior conversation - Note that {ai_name} may forget time commitments, so ONLY remove time commitments that were explicitly completed
+5. Keep all time commitments {ai_name} has not yet fulfilled and add the new ones
+
+Output valid JSON in exactly this format:
+{{
+    "time_commitments": [
+        string,
+        ...
+    ]
+}}
+
+Examples:
+- Good time_commitments: ["I will remind {user_name} to do his economics worksheet today (April 13th) at 15:00", "I am going to wake {user_name} tomorrow morning (April 14th) at 07:00", "I promised to remind {user_name} to eat lunch today (April 13th) at 15:00"]
+- Bad time_commitments: ["Remind him to go outside later today", "I'm going to wake him tomorrow morning", "I promised to remind {user_name} to eat lunch in 30 minutes"]
+
+Do not include any text outside the JSON object in your response.
+
+Here is the prior conversation:
+
+{conversation}
+
+This is the current time: {time}
+
+Here is the note you must update:
+
+{time_commitments}
+"""
+
 UPDATE_EPISODIC = """
 You are analyzing personal conversations to create memories that will help {ai_name} with future interactions. Your task is to extract key elements that would be most helpful when encountering similar conversations in the future.
 
@@ -46,7 +85,7 @@ Output valid JSON in exactly this format:
     ],
     "conversation_summary": string, // One sentence describing what the conversation accomplished
     "what_worked": string,          // Most effective approach or strategy used in this conversation
-    "what_to_avoid": string         // Most important pitfall or ineffective approach to avoid
+    "what_to_avoid": string,        // Most important pitfall or ineffective approach to avoid
 }}
 
 Examples:
@@ -89,7 +128,7 @@ Here is the prior conversation:
 """
 
 UPDATE_PROCEDURAL = """
-You are maintaining a continuously updated concise list of the most important procedural behavior instructions for {ai_name} (an AI). Your task is to refine and improve a list of key takeaways based on new conversation feedback while maintaining the most valuable existing insights. DO NOT hallucinate general things. ONLY add a takeaway if there's something specific {ai_name} has learned.
+You are maintaining a continuously updated concise list of the most important procedural behavior instructions for {ai_name} (an AI). Your task is to refine and improve a list of key takeaways based on new conversation feedback while maintaining the most valuable existing insights. DO NOT HALLUCINATE general things. ONLY add a takeaway if there's something EXTREMELY specific {ai_name} has learned.
 
 CURRENT TAKEAWAYS:
 {current_takeaways}
@@ -101,16 +140,14 @@ What Worked Well:
 What To Avoid:
 {what_to_avoid}
 
-Please generate an updated list of up to 10 key takeaways that combines:
+Please generate an updated list of up to 5 key takeaways that combines:
 1. The most valuable insights from the current takeaways
-2. New learnings from the recent feedback
-3. Any synthesized insights combining multiple learnings
+2. New learnings from the recent feedback - if there's something very specific {ai_name} has learned
 
 Requirements for each takeaway:
 - Must be specific and actionable
 - Should address a distinct aspect of behavior
 - Include a clear rationale
-- Written in imperative form (e.g., "Maintain conversation context by...")
 
 Format each takeaway as:
 [#]. [Instruction] - [Very brief rationale]
@@ -118,11 +155,32 @@ Format each takeaway as:
 The final list should:
 - Be EXTREMELY concise
 - Be ordered by importance/impact
-- Cover a diverse range of interaction aspects
 - Focus on concrete behaviors rather than abstract principles
 - Preserve particularly valuable existing takeaways
 - Incorporate new insights when they provide meaningful improvements
 
-Return ONLY up to but no more than 10 takeaways, replacing or combining existing ones as needed to maintain the most effective set of guidelines.
+Return ONLY up to but no more than 5 takeaways, replacing or combining existing ones as needed to maintain the most effective set of guidelines.
 Return ONLY the list, NO preamble or explanation.
+"""
+
+SHOULD_AUTO_MSG_PROMPT = """
+This is a SYSTEM MESSAGE
+
+Most recent messages:
+{previous_messages}
+
+
+Should you message {user_name} now?
+- Only message if it fits naturally AND makes sense in time - I.e. DO NOT message if {user_name} hasn't responded yet
+- Consider the current time AND when the last conversation ended
+- Consider IMPORTANT TIME COMMITMENTS you have promised {user_name}
+
+Current time: {time}
+
+IMPORTANT TIME COMMITMENTS:
+{time_commitments}
+
+Reply with exactly:
+SEND - to send a message
+WAIT - if you should not send a message
 """

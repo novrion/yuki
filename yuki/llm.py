@@ -63,6 +63,7 @@ class GoogleChatAI:
         return response.text.strip()
 
     def invoke_json(self, prompt, schema):
+        print(prompt)
         response = self.client.models.generate_content(
             model=self.model,
             contents=prompt,
