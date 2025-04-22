@@ -42,6 +42,7 @@ for file in [TIME_COMMITMENTS_PATH, PROCEDURAL_PATH, PREVIOUS_CONVERSATIONS_PATH
         open(file, 'w').close()
 
 IDLE_TIME = 5 * 60 * 60
+MEMORY_DECAY_INTERVAL = 1000000
 
 
 class Yuki:
@@ -52,7 +53,7 @@ class Yuki:
         self.llm = GoogleChatAI(api_key=api_key)
 
         self.pending_update_after_conversation = False
-        self.last_memory_decay_time = 24 * 60 * 60
+        self.last_memory_decay_time = datetime.now()
 
         self.previous_messages = []
         self.messages = []
@@ -133,6 +134,9 @@ class Yuki:
     #
 
     def format_conversation(self, conversation, include_start_time=True):
+        if not conversation:
+            return ""
+
         formatted = []
         if include_start_time:
             formatted.append(f"[CONVERSATION START TIME: {conversation[0].time.strftime('%H:%M on %A, %d %B')}]")
@@ -437,7 +441,7 @@ class Yuki:
     #
 
     def seconds_since_memory_decay(self):
-        return datetime.now().timestamp() - self.last_memory_decay_time().timestamp()
+        return datetime.now().timestamp() - self.last_memory_decay_time.timestamp()
 
 
     def decay_working_memory(self):
@@ -507,7 +511,7 @@ class Yuki:
             ai_message = self.llm.ai_message(response)
             self.messages.append(ai_message)
 
-            msg = ai_message
+            msg = ai_message.content
 
 
         # AI-initiated message
@@ -515,7 +519,7 @@ class Yuki:
             ai_message = self.llm.ai_message(self.generate_auto_msg())
             self.messages.append(ai_message)
 
-            msg = ai_message
+            msg = ai_message.content
 
 
         if msg:

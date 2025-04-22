@@ -4,3 +4,5 @@ chromadb
 langchain_community
 git+https://github.com/brandonstarxel/chunking_evaluation.git
 pypdf
+python-telegram-bot
+python-telegram-bot[job-queue]

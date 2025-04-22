@@ -1,10 +1,14 @@
+import sys
+import os
 from dotenv import load_dotenv
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from yuki import Yuki
 
 load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-OWNER_USER_ID = os.getenv("OWNER_USER_ID")
+OWNER_USER_ID = int(os.getenv("OWNER_USER_ID"))
 
 TICK_INTERVAL = 3 # seconds
 
@@ -56,7 +60,7 @@ async def tick(context: ContextTypes.DEFAULT_TYPE) -> None:
 #
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    auth(update.effective_user_id)
+    auth(update.effective_user.id)
     user_input_queue.append(update.message.text.strip())
 
 
