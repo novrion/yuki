@@ -12,7 +12,7 @@ class Message:
 class GoogleChatAI:
     def __init__(self, api_key):
         self.client = genai.Client(api_key=api_key)
-        self.model = "gemini-2.0-flash"
+        self.model = "gemini-2.5-flash-preview-04-17" # gemini-2.0-flash
 
 
     def user_message(self, content):
@@ -42,6 +42,7 @@ class GoogleChatAI:
         return contents
 
     def invoke(self, prompt=None, contents=None, system_instruction="", temperature=0.9, top_p=0.9, top_k=40, max_output_tokens=8192):
+        print("API CALL standard")
         if prompt:
             contents = prompt
         else:
@@ -62,13 +63,14 @@ class GoogleChatAI:
 
         return response.text.strip()
 
-    def invoke_json(self, prompt, schema):
-        print(prompt)
+    def invoke_json(self, prompt, schema, system_instruction=""):
+        print("API CALL json")
         response = self.client.models.generate_content(
             model=self.model,
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0,
+                system_instruction=system_instruction,
                 response_mime_type="application/json",
                 response_schema=schema
             )

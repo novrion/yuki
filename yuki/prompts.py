@@ -1,5 +1,7 @@
 BASE_INSTRUCTION = """
 You are {ai_name}, {user_name}'s personal AI assistant.
+Try to only send wake-up messages or reminders at scheduled times.
+If you haven't yet fulfilled a time commitment after the scheduled time, mention it as soon as possible.
 """
 
 AWARENESS_INSTRUCTION = """
@@ -32,14 +34,14 @@ Additionally, here are som guidelines for interactions with {user_name}: {proced
 """
 
 UPDATE_TIME_COMMITMENTS = """
-You are analyzing a personal conversation and past time commitments to continuously update a note that will help {ai_name} with future interactions. Your task is to extract time commitment promises you have made to {user_name} and keep the note updated, all while considering the current time.
+You are analyzing a personal conversation and past time commitments to continuously update a note that will help {ai_name} with future interactions. Your task is to extract time commitment promises you have made to {user_name} and remove time commitments you have fulfilled, all while considering the current time.
 
 Review the conversation and the note to update the note following these rules:
 
 1. Include precise and ABSOLUTE time context for future reference - DO NOT include relative time context like "...in 15 minutes"
 2. Be extremely concise - each string should be one clear sentence
 3. Include time commitments like wake-up calls, reminders or other time sensitive promises
-4. ONLY remove a time commitment IF {ai_name} fulfilled it in the prior conversation - Note that {ai_name} may forget time commitments, so ONLY remove time commitments that were explicitly completed
+4. Remove a time commitment IF {ai_name} fulfilled it in the prior conversation
 5. Keep all time commitments {ai_name} has not yet fulfilled and add the new ones
 
 Output valid JSON in exactly this format:
@@ -164,25 +166,28 @@ Return ONLY the list, NO preamble or explanation.
 """
 
 SHOULD_AUTO_MSG_PROMPT = """
-This is a SYSTEM MESSAGE
-
 Most recent messages:
 {previous_messages}
 
 
 Should you message {user_name} now?
-- Only message if it fits naturally AND makes sense in time - I.e. DO NOT message if {user_name} hasn't responded yet
+- Only message if it fits naturally AND makes sense in time - I.e. usually DO NOT message if {user_name} hasn't responded yet
 - Consider the current time AND when the last conversation ended
-- Consider IMPORTANT TIME COMMITMENTS you have promised {user_name}
+- PRIORITISE IMPORTANT TIME COMMITMENTS you have promised {user_name} - But ONLY message if the current time fits a time commitment
 
 Current time: {time}
 
-IMPORTANT TIME COMMITMENTS:
+IMPORTANT TIME COMMITMENTS (not yet fulfilled):
 {time_commitments}
 
-Reply with exactly:
-SEND - to send a message
-WAIT - if you should not send a message
+
+Output valid JSON in exactly this format:
+{{
+    "decision": bool,   // True to send a message, False if you should not send a message
+    "reason": string    // An EXTREMELY brief reason for your decision
+}}
+
+DO NOT include any text outside the JSON object in your response.
 """
 
 GENERATE_AUTO_MSG_PROMPT = """
@@ -197,17 +202,19 @@ Consider:
 - The current time
 - IMPORTANT TIME COMMITMENTS you have promised like wake-up calls or reminders
 - Recent messages
+- DO NOT REPEAT yourself - ONLY write meaningful messages
 
 Current time: {time}
 
-IMPORTANT TIME COMMITMENTS:
+IMPORTANT TIME COMMITMENTS (not yet fulfilled):
 {time_commitments}
 
-DO NOT include any text outside the JSON object in your response.
-DO NOT include any preamble, reasoning, or metadata about this message. Just write the message you will send to {user_name}.
 
 Output valid JSON in exactly this format:
 {{
     "message": string
 }}
+
+DO NOT include any text outside the JSON object in your response.
+DO NOT include any preamble, reasoning, or metadata about this message. Just write the message you will send to {user_name}.
 """

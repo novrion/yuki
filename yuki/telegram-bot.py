@@ -1,5 +1,7 @@
 import sys
 import os
+import asyncio
+from datetime import datetime, timedelta 
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -11,14 +13,14 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 OWNER_USER_ID = int(os.getenv("OWNER_USER_ID"))
 
 TICK_INTERVAL = 3 # seconds
+RESPONSE_DELAY = 7 # seconds
+TYPING_SPEED = 0.1
 
 yuki = Yuki(
     ai_name="Yuki",
     user_name="Elias",
     api_key=GOOGLE_API_KEY
 )
-
-user_input_queue = []
 
 
 def auth(user_id):
@@ -29,29 +31,57 @@ def auth(user_id):
 
 
 #
+# Input queue
+#
+
+user_input_queue = []
+response_time = datetime.now()
+
+def queue_message(user_input):
+    global user_input_queue, response_time
+    if not user_input_queue:
+        response_time = datetime.now()
+    user_input_queue.append(user_input)
+    response_time += timedelta(seconds=(RESPONSE_DELAY * 1/len(user_input_queue)))
+
+
+
+#
 # Tick
 #
 
 async def tick(context: ContextTypes.DEFAULT_TYPE) -> None:
-    
+
+    response = None
+
     global user_input_queue
-    if user_input_queue:
+    if user_input_queue and datetime.now() >= response_time:
         user_input = "\n".join(user_input_queue)
         user_input_queue = []
         response = yuki.tick(user_input=user_input)
 
-    else:
+    elif not user_input_queue:
         response = yuki.tick()
 
+
+    if not response:
+        return
 
     msg = response["msg"]
     image = response["image"]
     audio = response["audio"]
 
-    if not msg:
-        return
 
-    await context.bot.send_message(chat_id=OWNER_USER_ID, text=msg)
+    # Typing indicator
+    if msg:
+        end_time = datetime.now() + timedelta(seconds=TYPING_SPEED * len(msg))
+        while datetime.now() < end_time:
+            await context.bot.send_chat_action(chat_id=OWNER_USER_ID, action="typing")
+            await asyncio.sleep(min((end_time - datetime.now()).total_seconds(), 4.0))
+
+    # Send text
+    if msg:
+        await context.bot.send_message(chat_id=OWNER_USER_ID, text=msg)
 
 
 
@@ -61,7 +91,7 @@ async def tick(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     auth(update.effective_user.id)
-    user_input_queue.append(update.message.text.strip())
+    queue_message(update.message.text.strip())
 
 
 

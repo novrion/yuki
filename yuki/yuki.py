@@ -34,19 +34,23 @@ MEM_DIR = "./mem/"
 for dir in [DOCS_DIR, MEM_DIR]:
     os.makedirs(dir, exist_ok=True)
 
+LOG_PATH = "yuki.log"
 TIME_COMMITMENTS_PATH = MEM_DIR + "time_commitments"
 PROCEDURAL_PATH = MEM_DIR + "procedural_memory"
 PREVIOUS_CONVERSATIONS_PATH = MEM_DIR + "previous_conversations"
-for file in [TIME_COMMITMENTS_PATH, PROCEDURAL_PATH, PREVIOUS_CONVERSATIONS_PATH]:
+for file in [LOG_PATH, TIME_COMMITMENTS_PATH, PROCEDURAL_PATH, PREVIOUS_CONVERSATIONS_PATH]:
     if not os.path.exists(file):
         open(file, 'w').close()
 
-IDLE_TIME = 5 * 60 * 60
-MEMORY_DECAY_INTERVAL = 1000000
+IDLE_TIME = 2 * 60 # seconds
+MEMORY_DECAY_INTERVAL = 1000000 # seconds
+AUTO_MSG_INTERVAL = 3 * 60 # seconds (MUST BE LONGER THAN IDLE_TIME)
 
 
 class Yuki:
     def __init__(self, ai_name, user_name, api_key):
+        self.log("\n---------- Starting new Yui instance... ----------\n", timestamp=False)
+        
         self.ai_name = ai_name
         self.user_name = user_name
  
@@ -54,6 +58,7 @@ class Yuki:
 
         self.pending_update_after_conversation = False
         self.last_memory_decay_time = datetime.now()
+        self.last_auto_msg_check_time = datetime.now()
 
         self.previous_messages = []
         self.messages = []
@@ -71,6 +76,17 @@ class Yuki:
         self.load_docs()
         self.load_previous_conversations()
         self.load_time_commitments()
+
+
+
+    def log(self, text, timestamp=True, sub_log=False):
+        with open(LOG_PATH, 'a', encoding='utf-8') as file:
+            if sub_log:
+                file.write(f"                    \t{text}\n")
+            elif timestamp:
+                file.write(f"{datetime.now().strftime('[%Y-%m-%d %H:%M:%S]')}\t{text}\n")
+            else:
+                file.write(f"{text}\n")
 
 
 
@@ -98,20 +114,26 @@ class Yuki:
             schema=time_commitments_schema
         )
 
+        self.time_commitments = []
         with open(TIME_COMMITMENTS_PATH, 'w', encoding='utf-8') as file:
             for commitment in mem.time_commitments:
                 file.write(f"{commitment.strip()}\n")
+                self.time_commitments.append(commitment)
+
+        self.log(f"Updated time commitments and wrote to '{TIME_COMMITMENTS_PATH}'")
+        self.log(f"Time commitments: {self.time_commitments}", sub_log=True)
 
 
     def load_time_commitments(self):
         with open(TIME_COMMITMENTS_PATH, 'r', encoding='utf-8') as file:
             lines = file.readlines()
 
-        print(lines)
-
         self.time_commitments = []
         for commitment in lines:
             self.time_commitments.append(commitment.strip())
+
+        self.log(f"Loaded time commitments from '{TIME_COMMITMENTS_PATH}'")
+        self.log(f"Time commitments: {self.time_commitments}", sub_log=True)
 
 
     def create_awareness_instruction(self):
@@ -145,7 +167,7 @@ class Yuki:
             formatted.append(f"{role}: {message.content}")
         formatted.append(f"[CONVERSATION END TIME: {conversation[-1].time.strftime('%H:%M on %A, %d %B')}]")
 
-        return "\n".join(conversation)
+        return "\n".join(formatted)
 
 
     def store_conversations(self):
@@ -158,12 +180,16 @@ class Yuki:
             for convo in convos_escaped:
                 file.write(f"{convo}\n")
 
+        self.log(f"Stored conversations to '{PREVIOUS_CONVERSATIONS_PATH}'")
+
 
     def load_previous_conversations(self):
         with open(PREVIOUS_CONVERSATIONS_PATH, 'r', encoding='utf-8') as file:
             lines = file.readlines()
         for convo in lines:
             self.previous_conversations.append(convo.replace('\\n', '\n').strip())
+
+        self.log(f"Loaded previous conversations from '{PREVIOUS_CONVERSATIONS_PATH}'")
 
 
     def update_episodic_memory(self):
@@ -196,6 +222,8 @@ class Yuki:
             },
             ids=[f"{datetime.now().timestamp()}"]
         )
+
+        self.log("Updated episodic memory")
 
 
     def query_episodic(self, query):
@@ -269,11 +297,15 @@ class Yuki:
         document = " ".join(page.page_content for page in pages)
         self.load_chunks(self.get_chunks(document), path)
 
+        self.log(f"Loaded pdf from '{path}'")
+
 
     def load_text(self, path):
         with open(path, 'r', encoding='utf-8') as file:
             document = file.read()
         self.load_chunks(self.get_chunks(document), path)
+
+        self.log(f"Loaded text from '{path}'")
 
 
     def load_docs(self):
@@ -282,6 +314,7 @@ class Yuki:
             doc_path = os.path.join(DOCS_DIR, doc_name)
             docs.append(doc_path)
 
+        self.log(f"Attempting to load documents in '{DOCS_DIR}'")
         for doc in docs:
             if doc.endswith(".pdf"):
                 self.load_pdf(doc)
@@ -339,6 +372,8 @@ class Yuki:
         with open(PROCEDURAL_PATH, 'w', encoding='utf-8') as file:
             file.write(procedural_memory)
 
+        self.log(f"Updated procedural memory and wrote to '{PROCEDURAL_PATH}'")
+
 
     def create_procedural_instruction(self):
         with open(PROCEDURAL_PATH, 'r', encoding='utf-8') as file:
@@ -373,7 +408,6 @@ class Yuki:
         if procedural_instruction:
             instruction += "\n\n" + procedural_instruction
 
-        print(instruction)
         return instruction
 
 
@@ -383,7 +417,48 @@ class Yuki:
     #
 
     def should_auto_msg(self):
+        self.log("Attempting to send autonomous message...")
+
+        self.last_auto_msg_check_time = datetime.now()
+
+        class should_auto_msg_schema(BaseModel):
+            decision: bool
+            reason: str
+
         prompt = SHOULD_AUTO_MSG_PROMPT.format(
+            user_name=self.user_name,
+            time=datetime.now().strftime('%H:%M (%B %d)'),
+            time_commitments="\n".join(self.time_commitments),
+            previous_messages=self.format_conversation(
+                conversation=self.previous_messages,
+                include_start_time=False
+            )
+        )
+
+        instruction = BASE_INSTRUCTION.format(
+            ai_name=self.ai_name,
+            user_name=self.user_name
+        )
+        
+        decision: should_auto_msg_schema = self.llm.invoke_json(
+            prompt=prompt,
+            schema=should_auto_msg_schema,
+            system_instruction=instruction
+        )
+
+        if decision.decision:
+            self.log(f"Decided to send autonomous message ({decision.reason})", sub_log=True)
+        else:
+            self.log(f"Decided not to send autonomous message ({decision.reason})", sub_log=True)
+        
+        return decision.decision
+
+
+    def generate_auto_msg(self):
+        class auto_msg_schema(BaseModel):
+            message: str
+
+        prompt = GENERATE_AUTO_MSG_PROMPT.format(
             user_name=self.user_name,
             time=datetime.now().strftime('%H:%M'),
             time_commitments="\n".join(self.time_commitments),
@@ -398,37 +473,9 @@ class Yuki:
             user_name=self.user_name
         )
 
-        decision = self.llm.invoke(
-            prompt=prompt,
-            system_instruction=instruction,
-            temperature=0,
-            max_output_tokens=10
-        )
-
-        return decision.startswith("SEND")
-
-
-    def generate_auto_msg(self):
-        class auto_msg_schema(BaseModel):
-            message: string
-
-        prompt = GENERATE_AUTO_MSG_PROMPT.format(
-            user_name=self.user_name,
-            time=datetime.now().stftime('%H:%M'),
-            time_commitments="\n".join(self.time_commitments),
-            previous_messages=self.format_conversation(
-                conversation=self.previous_messages,
-                include_start_time=False
-            )
-        )
-
-        instruction = BASE_INSTRUCTION.format(
-            ai_name=self.ai_name,
-            user_name=self.user_name
-        )
-
         auto_msg: auto_msg_schema = self.llm.invoke_json(
             prompt=prompt,
+            schema=auto_msg_schema,
             system_instruction=instruction
         )
 
@@ -451,9 +498,13 @@ class Yuki:
             self.previous_messages = self.messages
         self.messages = []
 
+        self.log("Decayed working memory")
+
 
     def decay_memory(self):
         self.last_memory_decay_time = datetime.now()
+
+        self.log("Decayed memory")
 
 
 
@@ -469,6 +520,9 @@ class Yuki:
         else:
             return 24 * 60 * 60
 
+    def seconds_since_last_auto_msg_check(self):
+        return datetime.now().timestamp() - self.last_auto_msg_check_time.timestamp()
+
 
     def tick(self, user_input=None):
 
@@ -476,7 +530,7 @@ class Yuki:
         if self.seconds_since_last_message() > IDLE_TIME:
             self.conversation_ongoing = False
         
-        # Check if update after conversation ended
+        # Check if update needed after conversation ended
         if not self.conversation_ongoing and self.pending_update_after_conversation:
             self.pending_update_after_conversation = False
             self.update_time_commitments()
@@ -512,14 +566,16 @@ class Yuki:
             self.messages.append(ai_message)
 
             msg = ai_message.content
+            self.log(f"Responded to user input: '{msg}'")
 
 
         # AI-initiated message
-        elif not self.conversation_ongoing and self.should_auto_msg():
+        elif not self.conversation_ongoing and self.seconds_since_last_auto_msg_check() > AUTO_MSG_INTERVAL and self.should_auto_msg():
             ai_message = self.llm.ai_message(self.generate_auto_msg())
             self.messages.append(ai_message)
 
             msg = ai_message.content
+            self.log(f"Autonomous message: '{msg}'")
 
 
         if msg:
