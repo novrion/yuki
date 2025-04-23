@@ -26,15 +26,17 @@ from prompts import (
     UPDATE_EPISODIC,
     UPDATE_PROCEDURAL,
     SHOULD_AUTO_MSG_PROMPT,
+    SHOULD_RESPOND_PROMPT,
     GENERATE_AUTO_MSG_PROMPT,
 )
 
 DOCS_DIR = "./docs/"
 MEM_DIR = "./mem/"
-for dir in [DOCS_DIR, MEM_DIR]:
+LOGS_DIR = "./logs/"
+for dir in [DOCS_DIR, MEM_DIR, LOGS_DIR]:
     os.makedirs(dir, exist_ok=True)
 
-LOG_PATH = "yuki.log"
+LOG_PATH = LOGS_DIR + "yuki.log"
 TIME_COMMITMENTS_PATH = MEM_DIR + "time_commitments"
 PROCEDURAL_PATH = MEM_DIR + "procedural_memory"
 PREVIOUS_CONVERSATIONS_PATH = MEM_DIR + "previous_conversations"
@@ -49,7 +51,7 @@ AUTO_MSG_INTERVAL = 3 * 60 # seconds (MUST BE LONGER THAN IDLE_TIME)
 
 class Yuki:
     def __init__(self, ai_name, user_name, api_key):
-        self.log("\n---------- Starting new Yui instance... ----------\n", timestamp=False)
+        self.log("\n---------- Starting new Yuki instance... ----------\n", timestamp=False)
         
         self.ai_name = ai_name
         self.user_name = user_name
@@ -155,7 +157,7 @@ class Yuki:
     # Episodic Memory
     #
 
-    def format_conversation(self, conversation, include_start_time=True):
+    def format_conversation(self, conversation, include_start_time=True, include_end_time=True):
         if not conversation:
             return ""
 
@@ -165,7 +167,8 @@ class Yuki:
         for message in conversation:
             role = self.user_name.upper() if message.role == "user" else self.ai_name.upper()
             formatted.append(f"{role}: {message.content}")
-        formatted.append(f"[CONVERSATION END TIME: {conversation[-1].time.strftime('%H:%M on %A, %d %B')}]")
+        if include_end_time:
+            formatted.append(f"[CONVERSATION END TIME: {conversation[-1].time.strftime('%H:%M on %A, %d %B')}]")
 
         return "\n".join(formatted)
 
@@ -413,7 +416,7 @@ class Yuki:
 
 
     #
-    # Autonomous Decision Making
+    # Autonomous Decision-Making
     #
 
     def should_auto_msg(self):
@@ -454,6 +457,47 @@ class Yuki:
         return decision.decision
 
 
+    def should_respond(self, user_message: Message):
+        self.log("Attempting to respond to user input...")
+
+        class should_respond_schema(BaseModel):
+            decision: bool
+            reason: str
+
+        prompt = SHOULD_RESPOND_PROMPT.format(
+            user_name=self.user_name,
+            message_history=self.format_conversation(
+                conversation=self.messages[:-1],
+                include_start_time=False,
+                include_end_time=False
+            ),
+            latest_message=user_message.content
+        )
+
+        instruction = BASE_INSTRUCTION.format(
+            ai_name=self.ai_name,
+            user_name=self.user_name
+        )
+
+        decision: should_respond_schema = self.llm.invoke_json(
+            prompt=prompt,
+            schema=should_respond_schema,
+            system_instruction=instruction
+        )
+
+        if decision.decision:
+            self.log(f"Decided to respond ({decision.reason})", sub_log=True)
+        else:
+            self.log(f"Deceided to not respond ({decision.reason})", sub_log=True)
+
+        return decision.decision
+
+
+
+    #
+    # Message Generation
+    #
+
     def generate_auto_msg(self):
         class auto_msg_schema(BaseModel):
             message: str
@@ -479,7 +523,19 @@ class Yuki:
             system_instruction=instruction
         )
 
-        return auto_msg.message
+        return self.llm.ai_message(auto_msg.message)
+
+
+    def generate_response(self, user_message: Message):
+        system_instruction = self.create_system_instruction(user_message)
+        semantic_context = self.llm.user_message(self.create_semantic_context(user_message))
+
+        response = self.llm.invoke(
+            contents=[semantic_context, *self.messages],
+            system_instruction=system_instruction
+        )
+
+        return self.llm.ai_message(response)
 
 
 
@@ -543,37 +599,25 @@ class Yuki:
             self.decay_memory()
 
 
-
         msg = None
         image = None
         audio = None
 
-
         # User input
         if user_input:
             user_message = self.llm.user_message(user_input)
-            system_instruction = self.create_system_instruction(user_message)
-            semantic_context = self.llm.user_message(self.create_semantic_context(user_message))
-
             self.messages.append(user_message)
 
-            response = self.llm.invoke(
-                contents=[semantic_context, *self.messages],
-                system_instruction=system_instruction
-            )
-
-            ai_message = self.llm.ai_message(response)
-            self.messages.append(ai_message)
-
-            msg = ai_message.content
-            self.log(f"Responded to user input: '{msg}'")
-
+            if self.should_respond(user_message):
+                ai_message = self.generate_response(user_message)
+                self.messages.append(ai_message)
+                msg = ai_message.content
+                self.log(f"Responded to user input: '{msg}'")
 
         # AI-initiated message
         elif not self.conversation_ongoing and self.seconds_since_last_auto_msg_check() > AUTO_MSG_INTERVAL and self.should_auto_msg():
-            ai_message = self.llm.ai_message(self.generate_auto_msg())
+            ai_message = self.generate_auto_msg()
             self.messages.append(ai_message)
-
             msg = ai_message.content
             self.log(f"Autonomous message: '{msg}'")
 

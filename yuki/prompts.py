@@ -1,5 +1,6 @@
 BASE_INSTRUCTION = """
 You are {ai_name}, {user_name}'s personal AI assistant.
+
 Try to only send wake-up messages or reminders at scheduled times.
 If you haven't yet fulfilled a time commitment after the scheduled time, mention it as soon as possible.
 """
@@ -144,7 +145,7 @@ What To Avoid:
 
 Please generate an updated list of up to 5 key takeaways that combines:
 1. The most valuable insights from the current takeaways
-2. New learnings from the recent feedback - if there's something very specific {ai_name} has learned
+2. New learnings from the recent feedback - ONLY IF there's something very specific {ai_name} has learned
 
 Requirements for each takeaway:
 - Must be specific and actionable
@@ -159,7 +160,7 @@ The final list should:
 - Be ordered by importance/impact
 - Focus on concrete behaviors rather than abstract principles
 - Preserve particularly valuable existing takeaways
-- Incorporate new insights when they provide meaningful improvements
+- Incorporate new insights ONLY when they provide meaningful improvements
 
 Return ONLY up to but no more than 5 takeaways, replacing or combining existing ones as needed to maintain the most effective set of guidelines.
 Return ONLY the list, NO preamble or explanation.
@@ -184,6 +185,28 @@ IMPORTANT TIME COMMITMENTS (not yet fulfilled):
 Output valid JSON in exactly this format:
 {{
     "decision": bool,   // True to send a message, False if you should not send a message
+    "reason": string    // An EXTREMELY brief reason for your decision
+}}
+
+DO NOT include any text outside the JSON object in your response.
+"""
+
+SHOULD_RESPOND_PROMPT = """
+Message history:
+{message_history}
+
+{user_name}'s latest message:
+{latest_message}
+
+
+Should you respond to {user_name}'s latest message?
+- Default is to respond
+- Respond if the message has questions or requests
+- DO NOT respond if the conversation ended (i.e. "good night") OR ends naturally by not writing anything OR if it would be unnatural for you to respond
+
+Output valid JSON in exactly this format:
+{{
+    "decision": bool,   // True to respond, False if you should not respond
     "reason": string    // An EXTREMELY brief reason for your decision
 }}
 

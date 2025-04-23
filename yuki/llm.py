@@ -1,7 +1,19 @@
+import os
 from datetime import datetime
 from google import genai
 from google.genai import types
 from pydantic import BaseModel
+
+LOGS_DIR = "./logs/"
+for dir in [LOGS_DIR]:
+    os.makedirs(dir, exist_ok=True)
+
+LOG_PATH = LOGS_DIR + "llm.log"
+for file in [LOG_PATH]:
+    if not os.path.exists(file):
+        open(file, 'w').close()
+
+
 
 class Message:
     def __init__(self, role, content):
@@ -9,10 +21,24 @@ class Message:
         self.content = content
         self.time = datetime.now()
 
+
+
 class GoogleChatAI:
     def __init__(self, api_key):
+        self.log("\n---------- Starting new GoogleChatAI instance... ----------\n", timestamp=False)
+        
         self.client = genai.Client(api_key=api_key)
-        self.model = "gemini-2.5-flash-preview-04-17" # gemini-2.0-flash
+        self.model = "gemini-2.5-flash-preview-04-17"
+
+
+    def log(self, text, timestamp=True, sub_log=False):
+        with open(LOG_PATH, 'a', encoding='utf-8') as file:
+            if sub_log:
+                file.write(f"                    \t{text}\n")
+            elif timestamp:
+                file.write(f"{datetime.now().strftime('[%Y-%m-%d %H:%M:%S]')}\t{text}\n")
+            else:
+                file.write(f"{text}\n")
 
 
     def user_message(self, content):
@@ -23,6 +49,7 @@ class GoogleChatAI:
             parts=[types.Part.from_text(text=content)]
         )
 
+
     def ai_message(self, content):
         return Message("model", content)
         return types.Content(
@@ -30,6 +57,7 @@ class GoogleChatAI:
             parts=[types.Part.from_text(text=content)]
         )
     
+
     def convert_messages(self, messages: Message):
         contents = []
         for message in messages:
@@ -41,8 +69,10 @@ class GoogleChatAI:
             )
         return contents
 
+
     def invoke(self, prompt=None, contents=None, system_instruction="", temperature=0.9, top_p=0.9, top_k=40, max_output_tokens=8192):
-        print("API CALL standard")
+        self.log("invoke() - API call")
+        
         if prompt:
             contents = prompt
         else:
@@ -63,8 +93,10 @@ class GoogleChatAI:
 
         return response.text.strip()
 
+
     def invoke_json(self, prompt, schema, system_instruction=""):
-        print("API CALL json")
+        self.log("invoke_json() - API call")
+        
         response = self.client.models.generate_content(
             model=self.model,
             contents=prompt,

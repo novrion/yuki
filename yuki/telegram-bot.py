@@ -64,7 +64,7 @@ async def tick(context: ContextTypes.DEFAULT_TYPE) -> None:
         response = yuki.tick()
 
 
-    if not response:
+    if response == None:
         return
 
     msg = response["msg"]
