@@ -37,7 +37,7 @@ for file in [LOG_PATH, PROCEDURAL_MEM_PATH, TEMPORAL_MEM_PATH, WORKING_MEM_PATH]
         open(file, 'w').close()
 
 # Parameters
-IDLE_TIME = 3 * 0
+IDLE_TIME = 3 * 60
 AUTO_MSG_INTERVAL = 3 * 60
 QUERY_CONTEXT_LENGTH = 10
 
