@@ -1,11 +1,11 @@
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram import Update
+from datetime import datetime, timedelta 
+from dotenv import load_dotenv
+from yuki import Yuki
 import sys
 import os
 import asyncio
-from datetime import datetime, timedelta 
-from dotenv import load_dotenv
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from yuki import Yuki
 
 load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -56,7 +56,7 @@ async def tick(context: ContextTypes.DEFAULT_TYPE) -> None:
 
     global user_input_queue
     if user_input_queue and datetime.now() >= response_time:
-        user_input = "\n".join(user_input_queue)
+        user_input = " ".join(user_input_queue)
         user_input_queue = []
         response = yuki.tick(user_input=user_input)
 
