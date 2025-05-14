@@ -37,13 +37,13 @@ class Memory:
             else:
                 file.write(f"{text}\n")
 
-    def format_conversation(self, messages, roles=True, timestamps=False):
+    def format_conversation(self, messages: list[Message], roles=True, timestamps=False):
         ret = []
         for msg in messages:
             ret.append(self.format_message(msg, roles, timestamps))
         return "\n".join(ret) 
 
-    def format_message(self, message, role=False, timestamp=False):
+    def format_message(self, message: Message, role=False, timestamp=False):
         ret = ""
         if timestamp:
             time = datetime.fromtimestamp(message.timestamp).strftime('%H:%M')

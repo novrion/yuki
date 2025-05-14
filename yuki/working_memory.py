@@ -57,8 +57,12 @@ class WorkingMemory(Memory):
         self.save_json(data, self.storage_path)
         self.log("Updated working memory")
 
-    def retrieve(self):
-        return self.mem
+    def retrieve(self, timestamps=False):
+        ret = self.mem
+        if timestamps:
+            for i in range(len(ret)):
+                ret[i].content = self.format_message(ret[i], role=False, timestamp=True)
+        return ret
 
     def add_message(self, message: Message):
         self.mem.append(message)

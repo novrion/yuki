@@ -253,7 +253,7 @@ class Yuki:
 
         self.log(f"Generated auto message: {result.message}")
 
-        ai_message = Message(self.remove_timestamp(result.message), "model")
+        ai_message = Message(self.remove_timestamp(result.message.strip()), "model")
         return ai_message
 
 
@@ -273,7 +273,7 @@ class Yuki:
             ),
             "user"
         )
-        msg_history = self.working_memory.retrieve()
+        msg_history = self.working_memory.retrieve(timestamps=True)
 
         response = self.llm.invoke(
             contents=[semantic_context, *msg_history],
@@ -282,7 +282,7 @@ class Yuki:
 
         self.log(f"Generated response: {response}")
 
-        ai_message = Message(self.remove_timestamp(response), "model")
+        ai_message = Message(self.remove_timestamp(response.strip()), "model")
         return ai_message
 
 
@@ -338,8 +338,6 @@ class Yuki:
 
         # AI-initiated message
         elif idle and pending_auto_msg and self.should_auto_msg():
-            self.pending_memory_update = True # Remove? Only update memory if user involved in conversation?
-            
             ai_message = self.generate_auto_msg()
             self.working_memory.add_message(ai_message)
             msg = ai_message.content
