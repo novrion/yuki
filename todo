@@ -1,0 +1,7 @@
+========== TODO ==========
+1. Hybrid episodic memory approach. Query full conversation, retrieve facts + a partial extract from conversation and use that instead of just the full conversation. Requires AI parsing to get key facts from the conversation at time of storage in the vector database.
+2. Add document (images) and image handlers and document and image integration.
+3. Add text-to-speech and speech-to-text.
+
+===== Maybe =====
+1. Convert to Rust
